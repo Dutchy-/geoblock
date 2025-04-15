@@ -19,6 +19,8 @@ const (
 	CountryHeader                = "X-IPCountry"
 	caExampleIP                  = "99.220.109.148"
 	chExampleIP                  = "82.220.110.18"
+	multiForwardedIP             = "82.220.110.18,192.168.1.1,10.0.0.1"
+	multiForwardedIPwithSpaces   = "82.220.110.18, 192.168.1.1, 10.0.0.1"
 	privateRangeIP               = "192.168.1.1"
 	invalidIP                    = "192.168.1.X"
 	unknownCountry               = "1.1.1.1"
@@ -164,6 +166,84 @@ func TestMultipleAllowedCountry(t *testing.T) {
 	handler.ServeHTTP(recorder, req)
 
 	assertStatusCode(t, recorder.Result(), http.StatusOK)
+}
+
+func TestMultipleForwardedForIP(t *testing.T) {
+	cfg := createTesterConfig()
+	cfg.Countries = append(cfg.Countries, "CH")
+	cfg.AllowLocalRequests = true
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("Allowed request")) })
+
+	handler, err := geoblock.New(ctx, next, cfg, "GeoBlock")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add(xForwardedFor, multiForwardedIP)
+
+	handler.ServeHTTP(recorder, req)
+
+	recorderResult := recorder.Result()
+
+	assertStatusCode(t, recorderResult, http.StatusOK)
+
+	body, err := io.ReadAll(recorderResult.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedBody := "Allowed request"
+	if string(body) != expectedBody {
+		t.Fatalf("expected body %q, got %q", expectedBody, string(body))
+	}
+}
+
+func TestMultipleForwardedForIPwithSpaces(t *testing.T) {
+	cfg := createTesterConfig()
+	cfg.Countries = append(cfg.Countries, "CH")
+	cfg.AllowLocalRequests = true
+
+	ctx := context.Background()
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("Allowed request")) })
+
+	handler, err := geoblock.New(ctx, next, cfg, "GeoBlock")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Add(xForwardedFor, multiForwardedIPwithSpaces)
+
+	handler.ServeHTTP(recorder, req)
+
+	recorderResult := recorder.Result()
+
+	assertStatusCode(t, recorderResult, http.StatusOK)
+
+	body, err := io.ReadAll(recorderResult.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedBody := "Allowed request"
+	if string(body) != expectedBody {
+		t.Fatalf("expected body %q, got %q", expectedBody, string(body))
+	}
 }
 
 func createMockAPIServer(t *testing.T, ipResponseMap map[string][]byte) *httptest.Server {
